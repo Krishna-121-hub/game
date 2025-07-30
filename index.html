@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laddoo Bachao!</title>
+    <!-- Tailwind CSS for basic styling and responsiveness -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font for a playful look */
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f8ff; /* Light blue background */
+        }
+
+        canvas {
+            background-color: #a8dadc; /* Sky blue background for game area */
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            display: block;
+            touch-action: none; /* Disable default touch actions like scrolling/zooming */
+            position: relative; /* Needed for background positioning */
+            overflow: hidden; /* Hide background overflow */
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+            max-width: 90%;
+            width: 500px; /* Max width for the game container */
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .game-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: white;
+            background-image: linear-gradient(to right, #6a0dad, #8a2be2); /* Purple gradient */
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            background-image: linear-gradient(to right, #8a2be2, #6a0dad);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .message-box button {
+            margin-top: 20px;
+            background-image: linear-gradient(to right, #ff6b6b, #ee4c4c); /* Red gradient for retry */
+        }
+
+        .message-box button:hover {
+            background-image: linear-gradient(to right, #ee4c4c, #ff6b6b);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .game-container {
+                padding: 15px;
+                gap: 15px;
+            }
+            canvas {
+                width: 100%; /* Make canvas full width on small screens */
+                height: 350px; /* Fixed height for mobile */
+            }
+            .game-info {
+                font-size: 1rem;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 1rem;
+            }
+            .message-box {
+                font-size: 1.5rem;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1 class="text-4xl font-extrabold text-center text-purple-800 mb-4">Laddoo Bachao!</h1>
+        <div class="game-info">
+            <div id="score">Score: 0</div>
+            <div id="lives">Lives: 3</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="game-buttons">
+            <button id="startButton">Start Game</button>
+            <button id="pauseButton">Pause Game</button>
+        </div>
+    </div>
+
+    <!-- Message Box for Game Over/Instructions -->
+    <div id="messageBox" class="message-box">
+        <p id="messageText"></p>
+        <button id="retryButton">Retry</button>
+    </div>
+
+    <script>
+        // Get the canvas and its 2D rendering context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Get UI elements
+        const scoreDisplay = document.getElementById('score');
+        const livesDisplay = document.getElementById('lives');
+        const startButton = document.getElementById('startButton');
+        const pauseButton = document.getElementById('pauseButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const retryButton = document.getElementById('retryButton');
+
+        // Game configuration
+        const GAME_WIDTH = 400;
+        const GAME_HEIGHT = 600;
+        const PLAYER_WIDTH = 100; /* Slightly wider plate */
+        const PLAYER_HEIGHT = 25; /* Slightly taller plate */
+        const LADDOU_RADIUS = 20; /* Larger laddu */
+        const INITIAL_LIVES = 3;
+        const SHIELD_DURATION = 5000; // 5 seconds
+        const GOAT_REPEL_THRESHOLD = 5; // Number of clicks to repel goat
+        const GAME_SPEED_INCREASE_INTERVAL = 20000; // Increase speed every 20 seconds (20000 ms)
+        const BACKGROUND_SPEED = 0.5; // Speed of background scrolling
+
+        // Game state variables
+        let gameState = 'START'; // Possible states: 'START', 'PLAYING', 'PAUSED', 'GAME_OVER'
+        let score = 0;
+        let lives = INITIAL_LIVES;
+        let playerX = (GAME_WIDTH - PLAYER_WIDTH) / 2;
+        let ladduX = playerX + PLAYER_WIDTH / 2;
+        let ladduY = GAME_HEIGHT - PLAYER_HEIGHT - LADDOU_RADIUS;
+        let fallingObjects = [];
+        let lastObjectTime = 0;
+        let objectInterval = 1000; // Milliseconds between object spawns
+        let baseFallSpeed = 2; // Initial falling speed
+        let currentFallSpeed = baseFallSpeed;
+        let shieldActive = false;
+        let shieldTimer = null;
+        let goatActive = false;
+        let goatRepelCount = 0;
+        let goatObject = null;
+        let gameTimer = 0;
+        let lastSpeedIncreaseTime = 0;
+        let backgroundY = 0; // For scrolling background
+
+        // Set canvas dimensions
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        // Player (Plate and Laddu)
+        const player = {
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
+            draw: function() {
+                // Draw plate (more detailed)
+                ctx.fillStyle = '#A52A2A'; /* Darker brown for plate */
+                ctx.fillRect(playerX, GAME_HEIGHT - this.height, this.width, this.height);
+                ctx.fillStyle = '#8B4513'; /* Lighter brown for inner part */
+                ctx.fillRect(playerX + 5, GAME_HEIGHT - this.height + 5, this.width - 10, this.height - 10);
+                ctx.strokeStyle = '#654321'; /* Border */
+                ctx.lineWidth = 2;
+                ctx.strokeRect(playerX, GAME_HEIGHT - this.height, this.width, this.height);
+
+                // Draw laddu (more detailed)
+                ctx.beginPath();
+                ctx.arc(ladduX, ladduY, LADDOU_RADIUS, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(ladduX - LADDOU_RADIUS / 3, ladduY - LADDOU_RADIUS / 3, 0, ladduX, ladduY, LADDOU_RADIUS);
+                gradient.addColorStop(0, '#FFD700'); /* Gold center */
+                gradient.addColorStop(1, '#FFA500'); /* Orange outer */
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = '#CC8800'; /* Darker gold border */
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+
+                // Draw shield effect if active
+                if (shieldActive) {
+                    ctx.beginPath();
+                    ctx.arc(ladduX, ladduY, LADDOU_RADIUS + 10, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)'; /* Blue transparent */
+                    ctx.lineWidth = 5;
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+        };
+
+        // Falling Object types (using larger emojis for better visibility)
+        const OBJECT_TYPES = {
+            STONE: { emoji: '🪨', size: 30, type: 'stone' },
+            BIRD: { emoji: '🐦', size: 35, type: 'bird' },
+            GOAT: { emoji: '🐐', size: 40, type: 'goat' },
+            BOMB_LADDU: { emoji: '💣', size: 30, type: 'bomb' },
+            RASGULLA: { emoji: '🍬', size: 25, type: 'rasgulla' },
+            SHIELD: { emoji: '🛡️', size: 30, type: 'shield' }
+        };
+
+        // Function to create a new falling object
+        function createFallingObject() {
+            const typeKeys = Object.keys(OBJECT_TYPES);
+            let randomTypeKey;
+            const rand = Math.random();
+
+            if (rand < 0.05 && !goatActive) { // 5% chance for goat if not active
+                randomTypeKey = 'GOAT';
+            } else if (rand < 0.10) { // 5% chance for bomb
+                randomTypeKey = 'BOMB_LADDU';
+            } else if (rand < 0.25) { // 15% chance for rasgulla
+                randomTypeKey = 'RASGULLA';
+            } else if (rand < 0.35) { // 10% chance for shield
+                randomTypeKey = 'SHIELD';
+            } else { // Remaining for stone/bird
+                const generalTypes = ['STONE', 'BIRD'];
+                randomTypeKey = generalTypes[Math.floor(Math.random() * generalTypes.length)];
+            }
+
+            const objectConfig = OBJECT_TYPES[randomTypeKey];
+            const x = Math.random() * (GAME_WIDTH - objectConfig.size) + objectConfig.size / 2;
+            const y = -objectConfig.size; // Start above canvas
+
+            if (objectConfig.type === 'goat') {
+                goatActive = true;
+                goatRepelCount = 0;
+            }
+
+            fallingObjects.push({
+                x: x,
+                y: y,
+                size: objectConfig.size,
+                emoji: objectConfig.emoji,
+                type: objectConfig.type,
+                speed: currentFallSpeed + Math.random() * 0.5 // Slight variation in speed
+            });
+        }
+
+        // Draw a falling object (using emojis)
+        function drawFallingObject(obj) {
+            ctx.font = `${obj.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(obj.emoji, obj.x, obj.y);
+        }
+
+        // Draw the scrolling background
+        function drawBackground() {
+            // Simple background pattern (e.g., clouds or stars)
+            const patternHeight = 100; // Height of one pattern unit
+            const numPatterns = Math.ceil(GAME_HEIGHT / patternHeight) + 1; // +1 to ensure seamless loop
+
+            for (let i = 0; i < numPatterns; i++) {
+                const yPos = (backgroundY + i * patternHeight) % (GAME_HEIGHT + patternHeight) - patternHeight;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // Semi-transparent white for clouds
+                ctx.beginPath();
+                ctx.arc(GAME_WIDTH * 0.2, yPos + patternHeight * 0.3, 30, 0, Math.PI * 2);
+                ctx.arc(GAME_WIDTH * 0.4, yPos + patternHeight * 0.6, 25, 0, Math.PI * 2);
+                ctx.arc(GAME_WIDTH * 0.7, yPos + patternHeight * 0.2, 35, 0, Math.PI * 2);
+                ctx.arc(GAME_WIDTH * 0.85, yPos + patternHeight * 0.7, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            backgroundY += BACKGROUND_SPEED;
+            if (backgroundY >= patternHeight) {
+                backgroundY = 0;
+            }
+        }
+
+
+        // Update falling objects position and check collisions
+        function updateFallingObjects() {
+            for (let i = 0; i < fallingObjects.length; i++) {
+                const obj = fallingObjects[i];
+                obj.y += obj.speed;
+
+                // Simple collision detection with laddu (using bounding circles)
+                const dist = Math.sqrt(
+                    (obj.x - ladduX) * (obj.x - ladduX) +
+                    (obj.y - ladduY) * (obj.y - ladduY)
+                );
+
+                if (dist < obj.size / 2 + LADDOU_RADIUS) {
+                    handleCollision(obj);
+                    fallingObjects.splice(i, 1); // Remove object after collision
+                    i--; // Adjust index after removal
+                    continue; // Skip to next object
+                }
+
+
+                // Object fell off screen
+                if (obj.y - obj.size / 2 > GAME_HEIGHT) {
+                    if (obj.type !== 'rasgulla' && obj.type !== 'shield' && obj.type !== 'goat') {
+                        // Only lose life if it's a harmful object that wasn't caught
+                        if (!shieldActive) {
+                             loseLife();
+                        }
+                    }
+                    fallingObjects.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // Handle different types of collisions
+        function handleCollision(obj) {
+            switch (obj.type) {
+                case 'stone':
+                    if (!shieldActive) {
+                        gameOver("Oh no! A stone hit the Laddoo!");
+                    } else {
+                        showMessage("Shield protected the Laddoo!");
+                        shieldActive = false; // Shield absorbs one hit
+                        clearTimeout(shieldTimer);
+                    }
+                    break;
+                case 'bird':
+                    // Bird pushes laddu slightly
+                    ladduX += (Math.random() < 0.5 ? -1 : 1) * 15; // Increased push
+                    ladduX = Math.max(LADDOU_RADIUS, Math.min(GAME_WIDTH - LADDOU_RADIUS, ladduX));
+                    showMessage("A bird pushed the Laddoo!");
+                    break;
+                case 'goat':
+                    // Goat collision means it's attacking, player needs to repel
+                    goatObject = obj; // Store goat object for interaction
+                    showMessage("Goat attack! Tap/Click to repel!");
+                    break;
+                case 'bomb':
+                    gameOver("Boom! The Bomb Laddoo exploded the plate!");
+                    break;
+                case 'rasgulla':
+                    score += 10;
+                    updateScore();
+                    showMessage("Jackpot mil gaya! (+10)");
+                    break;
+                case 'shield':
+                    activateShield();
+                    break;
+            }
+        }
+
+        // Activate shield
+        function activateShield() {
+            shieldActive = true;
+            showMessage("Shield Activated!");
+            if (shieldTimer) clearTimeout(shieldTimer); // Clear any existing timer
+            shieldTimer = setTimeout(() => {
+                shieldActive = false;
+                showMessage("Shield deactivated.");
+            }, SHIELD_DURATION);
+        }
+
+        // Lose a life
+        function loseLife() {
+            if (lives > 0) {
+                lives--;
+                updateLives();
+                showMessage("Laddoo dropped! Lives remaining: " + lives);
+                if (lives === 0) {
+                    gameOver("Ab Nani kya bolegi! No lives left.");
+                }
+            }
+        }
+
+        // Update score display
+        function updateScore() {
+            scoreDisplay.textContent = `Score: ${score}`;
+        }
+
+        // Update lives display
+        function updateLives() {
+            livesDisplay.textContent = `Lives: ${lives}`;
+        }
+
+        // Game Over function
+        function gameOver(message) {
+            gameState = 'GAME_OVER';
+            messageText.textContent = `Game Over! Your Score: ${score}. ${message}`;
+            messageBox.style.display = 'block';
+            pauseButton.textContent = 'Game Over';
+            pauseButton.disabled = true;
+        }
+
+        // Reset game state
+        function resetGame() {
+            score = 0;
+            lives = INITIAL_LIVES;
+            playerX = (GAME_WIDTH - PLAYER_WIDTH) / 2;
+            ladduX = playerX + PLAYER_WIDTH / 2;
+            ladduY = GAME_HEIGHT - PLAYER_HEIGHT - LADDOU_RADIUS;
+            fallingObjects = [];
+            lastObjectTime = 0;
+            currentFallSpeed = baseFallSpeed;
+            shieldActive = false;
+            if (shieldTimer) clearTimeout(shieldTimer);
+            goatActive = false;
+            goatRepelCount = 0;
+            goatObject = null;
+            gameTimer = 0;
+            lastSpeedIncreaseTime = 0;
+            backgroundY = 0;
+
+            updateScore();
+            updateLives();
+            messageBox.style.display = 'none';
+            pauseButton.textContent = 'Pause Game';
+            pauseButton.disabled = false;
+        }
+
+        // Show temporary message
+        let messageTimeout;
+        function showMessage(msg) {
+            const tempMessageDiv = document.createElement('div');
+            tempMessageDiv.textContent = msg;
+            tempMessageDiv.style.cssText = `
+                position: absolute;
+                top: 10%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 10px;
+                font-size: 1.2rem;
+                z-index: 999;
+                opacity: 0;
+                transition: opacity 0.5s ease-in-out;
+            `;
+            document.body.appendChild(tempMessageDiv);
+
+            // Fade in
+            setTimeout(() => tempMessageDiv.style.opacity = 1, 10);
+
+            // Fade out and remove
+            if (messageTimeout) clearTimeout(messageTimeout);
+            messageTimeout = setTimeout(() => {
+                tempMessageDiv.style.opacity = 0;
+                tempMessageDiv.addEventListener('transitionend', () => tempMessageDiv.remove());
+            }, 2000); // Message visible for 2 seconds
+        }
+
+        // Game Loop
+        function animate(currentTime) {
+            if (gameState === 'PLAYING') {
+                // Clear canvas
+                ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+                // Draw background first
+                drawBackground();
+
+                // Update game timer and speed
+                gameTimer += (currentTime - (animate.lastTime || currentTime));
+                animate.lastTime = currentTime;
+
+                if (gameTimer - lastSpeedIncreaseTime > GAME_SPEED_INCREASE_INTERVAL) {
+                    currentFallSpeed += 0.5; // Increase speed
+                    objectInterval = Math.max(400, objectInterval - 50); // Decrease interval, min 400ms
+                    lastSpeedIncreaseTime = gameTimer;
+                    showMessage("Speed increased!");
+                }
+
+                // Generate new falling objects
+                if (currentTime - lastObjectTime > objectInterval) {
+                    createFallingObject();
+                    lastObjectTime = currentTime;
+                }
+
+                // Update and draw player
+                player.draw();
+
+                // Update and draw falling objects
+                updateFallingObjects();
+                fallingObjects.forEach(drawFallingObject);
+
+                // Check for goat attack not repelled
+                if (goatActive && goatObject && goatObject.y > GAME_HEIGHT * 0.7 && goatRepelCount < GOAT_REPEL_THRESHOLD) {
+                    // If goat is low and not repelled, game over
+                    gameOver("Main kha jaungi! The goat ate the Laddoo!");
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+
+        // Keyboard controls for plate movement and goat repel
+        document.addEventListener('keydown', (e) => {
+            if (gameState === 'PLAYING') {
+                if (e.key === 'ArrowLeft') {
+                    playerX = Math.max(0, playerX - 25); /* Increased movement speed */
+                } else if (e.key === 'ArrowRight') {
+                    playerX = Math.min(GAME_WIDTH - PLAYER_WIDTH, playerX + 25); /* Increased movement speed */
+                } else if (e.key === ' ' && goatActive) { // Spacebar to repel goat
+                    goatRepelCount++;
+                    showMessage(`Repel: ${goatRepelCount}/${GOAT_REPEL_THRESHOLD}`);
+                    if (goatRepelCount >= GOAT_REPEL_THRESHOLD) {
+                        // Goat repelled successfully
+                        fallingObjects = fallingObjects.filter(obj => obj.type !== 'goat');
+                        goatActive = false;
+                        goatObject = null;
+                        showMessage("Goat repelled!");
+                    }
+                }
+                // Update laddu position relative to plate
+                ladduX = playerX + PLAYER_WIDTH / 2;
+            }
+        });
+
+        // Touch controls for plate movement and goat repel
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            if (gameState === 'PLAYING') {
+                touchStartX = e.touches[0].clientX;
+                // Check if tap is for goat repel
+                if (goatActive) {
+                    goatRepelCount++;
+                    showMessage(`Repel: ${goatRepelCount}/${GOAT_REPEL_THRESHOLD}`);
+                    if (goatRepelCount >= GOAT_REPEL_THRESHOLD) {
+                        fallingObjects = fallingObjects.filter(obj => obj.type !== 'goat');
+                        goatActive = false;
+                        goatObject = null;
+                        showMessage("Goat repelled!");
+                    }
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameState === 'PLAYING' && e.touches.length > 0) {
+                const touchCurrentX = e.touches[0].clientX;
+                const deltaX = touchCurrentX - touchStartX;
+
+                // Adjust player position based on swipe
+                playerX += deltaX * 0.8; // Increased sensitivity for smoother swipe
+                playerX = Math.max(0, Math.min(GAME_WIDTH - PLAYER_WIDTH, playerX));
+
+                // Update laddu position
+                ladduX = playerX + PLAYER_WIDTH / 2;
+
+                touchStartX = touchCurrentX; // Update start for continuous movement
+            }
+        });
+
+        // Click for goat repel (desktop)
+        canvas.addEventListener('click', () => {
+            if (gameState === 'PLAYING' && goatActive) {
+                goatRepelCount++;
+                showMessage(`Repel: ${goatRepelCount}/${GOAT_REPEL_THRESHOLD}`);
+                if (goatRepelCount >= GOAT_REPEL_THRESHOLD) {
+                    fallingObjects = fallingObjects.filter(obj => obj.type !== 'goat');
+                    goatActive = false;
+                    goatObject = null;
+                    showMessage("Goat repelled!");
+                }
+            }
+        });
+
+
+        startButton.addEventListener('click', () => {
+            if (gameState === 'START' || gameState === 'GAME_OVER') {
+                resetGame();
+                gameState = 'PLAYING';
+                animate(performance.now()); // Start animation loop
+                showMessage("Chal, phir se koshish kar!"); // "Come on, try again!"
+            }
+        });
+
+        pauseButton.addEventListener('click', () => {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                pauseButton.textContent = 'Resume Game';
+                showMessage("Game Paused");
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                pauseButton.textContent = 'Pause Game';
+                showMessage("Game Resumed");
+                animate(performance.now()); // Resume animation loop
+            }
+        });
+
+        retryButton.addEventListener('click', () => {
+            startButton.click(); // Simulate click on start button to reset and play
+        });
+
+        // Initial setup on window load
+        window.onload = function() {
+            // Display initial instructions
+            messageText.innerHTML = `
+                <p>Protect the Laddoo!</p>
+                <p><strong>PC Controls:</strong></p>
+                <ul>
+                    <li>Move Plate: <strong>Left/Right Arrow keys</strong></li>
+                    <li>Repel Goat: <strong>Spacebar</strong> or <strong>Click</strong> on canvas</li>
+                </ul>
+                <p><strong>Mobile Controls:</strong></p>
+                <ul>
+                    <li>Move Plate: <strong>Swipe Left/Right</strong> on canvas</li>
+                    <li>Repel Goat: <strong>Tap</strong> rapidly on canvas</li>
+                </ul>
+                <p>Good luck!</p>
+            `;
+            messageBox.style.display = 'block';
+            pauseButton.disabled = true; // Disable pause until game starts
+        };
+
+        // Ensure canvas resizes with window for responsiveness
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth;
+
+            // Adjust canvas width to fit container, maintaining aspect ratio
+            // Max width is GAME_WIDTH, but can scale down for smaller screens
+            canvas.style.width = `${Math.min(GAME_WIDTH, containerWidth - 40)}px`; // -40 for padding
+            canvas.style.height = `${(canvas.clientWidth / GAME_WIDTH) * GAME_HEIGHT}px`;
+        }
+
+        // Call resize on load and on window resize
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // Initial call
+    </script>
+</body>
+</html>
+
